@@ -12,6 +12,10 @@ import { fileURLToPath } from "node:url";
 
 const ARTWORK = "entry.png";
 
+// RULES.txt caps the entry image at 1 MiB (1,048,576 bytes). Reject an
+// oversized file here instead of shipping one the judge will discard.
+const MAX_BYTES = 1048576;
+
 // The eight bytes at the start of every PNG file.
 const PNG_HEADER = Uint8Array.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -40,6 +44,9 @@ function main(): void {
   const bytes = readFileSync(sourcePath);
   if (!isPng(bytes)) {
     abort(`${ARTWORK} does not start with a PNG signature`);
+  }
+  if (bytes.length > MAX_BYTES) {
+    abort(`${ARTWORK} is ${bytes.length} bytes, over the 1 MiB limit (${MAX_BYTES})`);
   }
 
   mkdirSync(outDir, { recursive: true });
