@@ -1,46 +1,51 @@
-// Entry program — news-image-20261120.
+// Entry program for the news-image-20261120 bounty (v2).
 //
-// The finished front page ships in this repository as entry.png. All this
-// program does is place that exact file where the grader expects it:
-// <output>/entry.png. Copying bytes, never redrawing them, means the two
-// grading runs can only ever produce the same file.
+// The deliverable is a finished newspaper front page, entry.png, which
+// ships in this repository next to this file. This program never draws
+// anything: it simply places that exact file where the grader looks for
+// it, at <output>/entry.png. A plain byte copy is deterministic, so the
+// two grading runs can only ever produce identical output.
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const FILE = "entry.png";
+const ARTWORK = "entry.png";
 
-// The eight bytes every PNG file opens with.
-const PNG_SIGNATURE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+// The eight bytes at the start of every PNG file.
+const PNG_HEADER = Uint8Array.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
 
-function fail(reason: string): never {
-  console.error(`main.ts: ${reason}`);
+function abort(message: string): never {
+  console.error(`entry: ${message}`);
   process.exit(1);
+}
+
+function isPng(bytes: Buffer): boolean {
+  return (
+    bytes.length >= PNG_HEADER.length &&
+    PNG_HEADER.every((byte, index) => bytes[index] === byte)
+  );
 }
 
 function main(): void {
   const here = process.env.MAKEFUN_BOT_DIR ?? dirname(fileURLToPath(import.meta.url));
-  const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
-  const source = join(here, FILE);
+  const outDir = resolve(process.env.MAKEFUN_OUTPUT_DIR ?? "/output");
+  const sourcePath = join(here, ARTWORK);
 
-  if (!existsSync(source)) {
-    fail(`missing ${FILE} in ${here}`);
+  if (!existsSync(sourcePath)) {
+    abort(`cannot find ${ARTWORK} in ${here}`);
   }
-
-  const bytes = readFileSync(source);
-  const head = bytes.subarray(0, PNG_SIGNATURE.length);
-  const isPng =
-    bytes.length >= PNG_SIGNATURE.length &&
-    head.every((byte, i) => byte === PNG_SIGNATURE[i]);
-  if (!isPng) {
-    fail(`${FILE} does not look like a PNG file`);
+  const bytes = readFileSync(sourcePath);
+  if (!isPng(bytes)) {
+    abort(`${ARTWORK} does not start with a PNG signature`);
   }
 
   mkdirSync(outDir, { recursive: true });
-  const destination = join(outDir, FILE);
-  copyFileSync(source, destination);
-  console.log(`main.ts: wrote ${FILE} (${bytes.length} bytes) to ${destination}`);
+  const targetPath = join(outDir, ARTWORK);
+  copyFileSync(sourcePath, targetPath);
+  console.log(`entry: wrote ${ARTWORK} (${bytes.length} bytes) -> ${targetPath}`);
 }
 
 main();
