@@ -48,4 +48,12 @@ if (copied !== bytes.length) {
   console.error(`copy failed: wrote ${copied} of ${bytes.length} bytes`);
   process.exit(1);
 }
+// Verify the copy byte-for-byte: re-read the output and compare its full
+// contents with the source, so a truncated or corrupted write is caught
+// even when the size happens to match.
+const written = readFileSync(target);
+if (!written.equals(bytes)) {
+  console.error("copy failed: output bytes differ from entry.png");
+  process.exit(1);
+}
 console.log(`wrote ${target} (${copied} bytes, ${width}x${height})`);
