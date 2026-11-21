@@ -1,64 +1,51 @@
-// makefun-news-image-20261120 — v3 entry program.
+// news-image-20261120 v4 — entry program (Node 22, ESM, stdlib only).
 //
-// The front page is pre-rendered as entry.png (1024x1024, drawn once with
-// PIL so every glyph is pixel-perfect). This program only has to deliver
-// that file into the output directory, unchanged, so the competition's two
-// grading runs see byte-identical output.
-//
-// Guards, in order: the file must sit next to this program, it must really
-// be a PNG (magic bytes), it must fit the 1 MiB cap in RULES.txt, and its
-// dimensions must be exactly 1024x1024 (the page is drawn for that canvas;
-// a wrongly-sized file would grade as a different image). Anything else is
-// a hard failure (exit 1) instead of a silent bad entry.
+// The entry image is fixed: this program copies entry.png byte-for-byte into
+// the output directory the grader provides (MAKEFUN_OUTPUT_DIR, falling back
+// to /output), after checking that the file is a real PNG of exactly the
+// size the rules allow: at most 1 MiB (1,048,576 bytes) and exactly
+// 1024x1024 pixels. Anything else fails loudly with exit code 1 so a bad
+// file is never submitted as if it were fine.
 
-import { copyFile, mkdir, readFile, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { copyFileSync, readFileSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ARTWORK_FILE = "entry.png";
-const MAX_SIZE = 1048576; // RULES.txt: PNG at most 1 MiB
-// RULES.txt: at most 1024x1024; our page is drawn at exactly 1024x1024.
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const MAX_BYTES = 1048576; // RULES.txt: PNG or JPEG, at most 1 MiB
 const EXPECTED_WIDTH = 1024;
 const EXPECTED_HEIGHT = 1024;
-const PNG_SIGNATURE = Buffer.from([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-]);
 
-const SOURCE_DIR = dirname(fileURLToPath(import.meta.url));
-const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
+const here = resolve(fileURLToPath(new URL(".", import.meta.url)));
+const source = join(here, "entry.png");
+const outDir = process.env.MAKEFUN_OUTPUT_DIR || "/output";
+const target = join(outDir, "entry.png");
 
-async function run(): Promise<void> {
-  const source = join(SOURCE_DIR, ARTWORK_FILE);
-  const info = await stat(source).catch(() => null);
-  if (info === null) {
-    throw new Error(`${ARTWORK_FILE} is missing next to main.ts`);
-  }
-  if (info.size > MAX_SIZE) {
-    throw new Error(
-      `${ARTWORK_FILE} is ${info.size} bytes, over the 1 MiB limit (${MAX_SIZE})`,
-    );
-  }
-  const bytes = await readFile(source);
-  if (!bytes.subarray(0, 8).equals(PNG_SIGNATURE)) {
-    throw new Error(`${ARTWORK_FILE} does not start with the PNG signature`);
-  }
-  // PNG IHDR chunk: width and height are big-endian uint32 at bytes 16-23.
-  if (bytes.length < 24) {
-    throw new Error(`${ARTWORK_FILE} is too short to hold a PNG IHDR`);
-  }
-  const width = bytes.readUInt32BE(16);
-  const height = bytes.readUInt32BE(20);
-  if (width !== EXPECTED_WIDTH || height !== EXPECTED_HEIGHT) {
-    throw new Error(
-      `${ARTWORK_FILE} is ${width}x${height}, expected ${EXPECTED_WIDTH}x${EXPECTED_HEIGHT}`,
-    );
-  }
-  await mkdir(OUTPUT_DIR, { recursive: true });
-  await copyFile(source, join(OUTPUT_DIR, ARTWORK_FILE));
-  console.log(`entry: wrote ${ARTWORK_FILE} (${bytes.length} bytes) -> ${OUTPUT_DIR}`);
+const bytes = readFileSync(source);
+if (!bytes.subarray(0, 8).equals(PNG_MAGIC)) {
+  console.error("entry.png is not a PNG file (bad magic bytes)");
+  process.exit(1);
+}
+if (bytes.length > MAX_BYTES) {
+  console.error(
+    `entry.png is ${bytes.length} bytes, over the 1 MiB limit (${MAX_BYTES})`,
+  );
+  process.exit(1);
+}
+// PNG header: width at bytes 16-19, height at bytes 20-23, big-endian uint32.
+const width = bytes.readUInt32BE(16);
+const height = bytes.readUInt32BE(20);
+if (width !== EXPECTED_WIDTH || height !== EXPECTED_HEIGHT) {
+  console.error(
+    `entry.png is ${width}x${height}, expected ${EXPECTED_WIDTH}x${EXPECTED_HEIGHT}`,
+  );
+  process.exit(1);
 }
 
-run().catch((err: unknown) => {
-  console.error(`entry: ${err instanceof Error ? err.message : String(err)}`);
+copyFileSync(source, target);
+const copied = statSync(target).size;
+if (copied !== bytes.length) {
+  console.error(`copy failed: wrote ${copied} of ${bytes.length} bytes`);
   process.exit(1);
-});
+}
+console.log(`wrote ${target} (${copied} bytes, ${width}x${height})`);
